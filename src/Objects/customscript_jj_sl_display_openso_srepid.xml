@@ -1,0 +1,25 @@
+<suitelet scriptid="customscript_jj_sl_display_openso_srepid">
+  <description></description>
+  <isinactive>F</isinactive>
+  <name>JJ SL Page to display Open SO details</name>
+  <notifyadmins>F</notifyadmins>
+  <notifyemails></notifyemails>
+  <notifyowner>T</notifyowner>
+  <notifyuser>F</notifyuser>
+  <scriptfile>[/SuiteScripts/JobinandJismi/OTP-7938 Script/jj_sl_Custom Page to display SO details.js]</scriptfile>
+  <scriptdeployments>
+    <scriptdeployment scriptid="customdeploy_jj_sl_display_openso_srepid">
+      <allemployees>F</allemployees>
+      <allpartners>F</allpartners>
+      <allroles>F</allroles>
+      <audslctrole></audslctrole>
+      <eventtype></eventtype>
+      <isdeployed>T</isdeployed>
+      <isonline>F</isonline>
+      <loglevel>DEBUG</loglevel>
+      <runasrole></runasrole>
+      <status>TESTING</status>
+      <title>JJ SL Page to display Open SO details</title>
+    </scriptdeployment>
+  </scriptdeployments>
+</suitelet>
