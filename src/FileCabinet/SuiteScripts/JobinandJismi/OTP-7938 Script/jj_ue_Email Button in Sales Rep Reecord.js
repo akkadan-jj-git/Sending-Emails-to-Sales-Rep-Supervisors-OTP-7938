@@ -21,12 +21,19 @@ define(['N/ui/serverWidget', 'N/url', 'N/record', 'N/redirect'],
         if (scriptContext.type === scriptContext.UserEventType.VIEW) {
           let form = scriptContext.form;
           let id = scriptContext.newRecord.id;
-          // log.debug('Record id', id);
-          let email = form.addButton({
-            id: 'custpage_email_button',
-            label: 'Email',
-            functionName: 'redirectToSalesOrdersPage(' + id + ')'
+          let employeeRecord = record.load({
+            type: record.Type.EMPLOYEE,
+            id: id
           });
+          let salesrep = employeeRecord.getValue({ fieldId: 'issalesrep' });
+          log.debug('Sales Rep?',salesrep);
+          if(salesrep === true){
+            let email = form.addButton({
+              id: 'custpage_email_button',
+              label: 'Email',
+              functionName: 'redirectToSalesOrdersPage(' + id + ')'
+            });
+          }
           
           form.clientScriptModulePath = './jj_cs_Sales Rep to Suitelet page.js';
         }
