@@ -38,14 +38,15 @@ define(['N/email', 'N/file', 'N/format', 'N/record', 'N/search', 'N/ui/serverWid
                     type: record.Type.CUSTOMER,
                     id: internalId
                 });
-                let customerName = customerRecord.getValue({ fieldId: 'companyname' });
+                let customerName = customerRecord.getValue({ fieldId: 'entityid' });
                 return customerName;
             } catch (e) {
                 log.error('Error', e.message);
                 return null;
             }
         }
-        function getSalesOrderDetails(salesRepId) {
+        // Search
+        function getSalesOrderDetails(salesRepId, pg, ps, form) {
             try {
                 let salesorderSearchObj = search.create({
                     type: "salesorder",
@@ -69,8 +70,32 @@ define(['N/email', 'N/file', 'N/format', 'N/record', 'N/search', 'N/ui/serverWid
                             search.createColumn({ name: "amount", label: "Amount" })
                         ]
                 });
-                let searchResult = salesorderSearchObj.run().getRange({ start: 0, end: 1000 });
-                return searchResult;
+                // let searchResult = salesorderSearchObj.run().getRange({ start: 0, end: 1000 });
+                let pageSize = ps;
+                let currentPage;
+                let pageIndex = pg;
+                let pagedData = salesorderSearchObj.runPaged({ pageSize: pageSize });
+                let totalLines = pagedData.count;
+                let totalPages = Math.ceil(totalLines / pageSize);
+                if (totalLines === 0) {
+                    // If there are no search results, display a message
+                    form.addField({
+                    id: 'no_purchases_message',
+                    type: serverWidget.FieldType.INLINEHTML,
+                    label: 'No Purchases',
+                    container: 'custpage_items_purchased'
+                    })
+                }
+                else{
+                    // Set page index from request parameters or default to 0 if out of range
+                    if (pageIndex < 0 || pageIndex >= totalPages) {
+                        pageIndex = 0;
+                    }
+                    // Get the search results for the current page
+                    currentPage = pagedData.fetch({ index: pageIndex });
+                }
+                log.debug('Search Result', currentPage);
+                return currentPage;
             }
             catch (e) {
                 log.debug('Error@getSalesOrderDetails', e.stack + '\n' + e.message);
@@ -100,7 +125,7 @@ define(['N/email', 'N/file', 'N/format', 'N/record', 'N/search', 'N/ui/serverWid
                 return csvFileId;
             }
             catch(e){
-                log.debug('Error@createcsv', e.stach + '\n' + e.message);
+                log.debug('Error@createcsv', e.stack + '\n' + e.message);
             }
         }
         function createExcelFile(selected, repId) {
@@ -171,10 +196,40 @@ define(['N/email', 'N/file', 'N/format', 'N/record', 'N/search', 'N/ui/serverWid
         
             let xlsFileId = xlsFile.save();
             return xlsFileId;
-        }        
+        }
+        function setSummaryBox(summaryLine) {
+            let html = '<style>'
+                'table.newtotallingtable caption {n' +
+                '  display: table-caption !important;n' +
+                '  margin-bottom: 10px;n' +
+                '  font-weight: bold;n' +
+                '  color: white;n' +
+                '  font-size: 12px !important;n' +
+                '  padding: 4px 0px 4px 8px;n' +
+                '}' +
+                'table.newtotallingtable caption {n' +
+                '  background-color: #607799;n' +
+                '}' +
+                'caption, th {n' +
+                '  text-align: left;n' +
+                '}' +
+                '</style>';
+            html += '<div style=”text-align: right; padding-right: 20px;”>';
+            html += '<span class=”bgmd totallingbg” style=”display:inline-block; padding: 10px 25px; margin-bottom:5px;”>';
+            html += '<table class=”newtotallingtable” cellspacing=”2? cellpadding=”0px” border=”0px” style=”padding: 5px;n' +
+                '  width: 217px;”><caption style=”display: none;” >Summary</caption><tbody><td style=”text-align: left;”>'; // Adjusted alignment
+            html += '<div class=”uir-field-wrapper” data-field-type=”currency”><span id=”subtotal_fs_lbl_uir_label” class=”smalltextnolink uir-label “><span id=”subtotal_fs_lbl” class=”smalltextnolink” style=”color: #262626 !important; font-size: 12px; padding-bottom:10px;”>'
+            html += 'Total Quantity</td>';
+            html += '<td style=”text-align: right; color: #262626 !important; font-size: 13px; padding-bottom:10px;” align=”right” id=”subtotal”><b>'; // Adjusted alignment
+            html += summaryLine.totalQuantity + '</b></td><td></td></tr>';
+            html += '<tr><td style=”text-align: left; color: #262626 !important; font-size: 12px;”>TOTAL AMOUNT</td><td align=”right” style=”font-size: 13px; color: #262626 !important;”><b>';
+            html += '<span style=”font-size: 13px; color: #262626; padding-left: 2px;”>' + summaryLine.totalAmount.toFixed(2) + '</span></b></td></tr>'; // Adjusted alignment
+            html += '</table></div>';
+            return html;
+        }  
         const onRequest = (scriptContext) => {
             try {
-                let pageSize = 25;
+                let pageSize = 10;
                 let pageIndex = parseInt(scriptContext.request.parameters.pageIndex) || 0;
                 if (scriptContext.request.method === 'GET') {
                     let form = serverWidget.createForm({
@@ -208,22 +263,38 @@ define(['N/email', 'N/file', 'N/format', 'N/record', 'N/search', 'N/ui/serverWid
                     subList1.addField({ id: 'custpage_reason', label: 'Reason for Delay', type: serverWidget.FieldType.TEXT 
                     }).updateDisplayType({displayType: serverWidget.FieldDisplayType.ENTRY });
                     subList1.addField({ id: 'custpage_select', label: 'Select', type: serverWidget.FieldType.CHECKBOX });
-                    let result = getSalesOrderDetails(salesRepId);
-                    for (let i = 0; i < result.length; i++) {
-                        let documentNumber = result[i].getValue('tranid');
-                        let customerId = result[i].getValue('entity');
-                        let customerName = getCustomerName(customerId);
-                        let memo = result[i].getValue('memo') || 'N/A';
-                        // let dacteCreated = result[i].getValue('datecreated');
-                        let amount = result[i].getValue('amount');
-                        subList1.setSublistValue({ id: 'custpage_docno', line: i, value: documentNumber });
-                        subList1.setSublistValue({ id: 'custpage_name', line: i, value: customerName });
-                        subList1.setSublistValue({ id: 'custpage_memo', line: i, value: memo });
-                        subList1.setSublistValue({ id: 'custpage_amount', line: i, value: amount });
+                    let search = getSalesOrderDetails(salesRepId, pageIndex, pageSize, form);
+                    log.debug('Ammachiyea, Paappi ingethi....!!!');
+                    if(search != null){
+                        let result = search.data;
+                        log.debug('Recieved Search result in Suitelet', result);
+                        for (let i = 0; i < result.length; i++) {
+                            let documentNumber = result[i].getValue('tranid');
+                            let customerId = result[i].getValue('entity');
+                            let customerName = getCustomerName(customerId) || 'N/A';
+                            let memo = result[i].getValue('memo') || 'N/A';
+                            // let dacteCreated = result[i].getValue('datecreated');
+                            let amount = result[i].getValue('amount');
+                            subList1.setSublistValue({ id: 'custpage_docno', line: i, value: documentNumber });
+                            subList1.setSublistValue({ id: 'custpage_name', line: i, value: customerName });
+                            subList1.setSublistValue({ id: 'custpage_memo', line: i, value: memo });
+                            subList1.setSublistValue({ id: 'custpage_amount', line: i, value: amount });
+                        }
+                        let submitButton = form.addSubmitButton({
+                            label: 'Send Email'
+                        });
                     }
-                    let submitButton = form.addSubmitButton({
-                        label: 'Send Email'
-                    });
+                    else{
+                        let warning = form.addField({
+                            id: 'custpage_warning',
+                            label: 'Alert!',
+                            type: serverWidget.FieldType.TEXT,
+                        });
+                        warning.defaultValue = 'No Sales Orders found in this month.';
+                        warning.updateDisplayType({
+                            displayType: serverWidget.FieldDisplayType.DISABLED
+                        });
+                    }
                     scriptContext.response.writePage(form);
                 }
                 else if (scriptContext.request.method === 'POST') {

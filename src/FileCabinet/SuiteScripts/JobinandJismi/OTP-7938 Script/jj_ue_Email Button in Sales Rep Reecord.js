@@ -26,7 +26,6 @@ define(['N/ui/serverWidget', 'N/url', 'N/record', 'N/redirect'],
             id: id
           });
           let salesrep = employeeRecord.getValue({ fieldId: 'issalesrep' });
-          log.debug('Sales Rep?',salesrep);
           if(salesrep === true){
             let email = form.addButton({
               id: 'custpage_email_button',
@@ -34,7 +33,6 @@ define(['N/ui/serverWidget', 'N/url', 'N/record', 'N/redirect'],
               functionName: 'redirectToSalesOrdersPage(' + id + ')'
             });
           }
-          
           form.clientScriptModulePath = './jj_cs_Sales Rep to Suitelet page.js';
         }
       }
