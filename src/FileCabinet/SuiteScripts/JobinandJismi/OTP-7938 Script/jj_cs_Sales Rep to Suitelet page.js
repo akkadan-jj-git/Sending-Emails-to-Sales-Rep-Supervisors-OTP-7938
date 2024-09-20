@@ -3,11 +3,36 @@
  * @NScriptType ClientScript
  * @NModuleScope SameAccount
  */
-define(['N/url'],
+/*****************************************************************************************************************************************
+ * OTP
+ *
+ * OTP-7938:Build a Page for Sending Emails to Sales Rep Supervisors
+ *
+ *******************************************************************************************************************************************
+ *
+ * Author: Jobin & Jismi IT Services
+ *
+ * Date Created : 20-September-2024
+ *
+ *  Description :Create a script for streamlining communication between sales reps and their supervisors by adding an "Email" button to the 
+    sales rep's record in NetSuite. Upon clicking this button, users will be redirected to a new page that displays all open sales orders for 
+    the selected sales rep.
+    This page should list sales orders with a "Pending Approval" status and those marked as "Open" with a creation date older than one month. 
+    Users can select multiple sales orders using checkboxes. Users should be able to select sales orders and provide reasons for each.
+
+    Upon submission, the selected sales orders and reasons should be listed under each respective sales order as a sublist. All selected sales 
+    orders should be compiled into an Excel file and sent to the sales rep's supervisor via email. This file should contain columns like 
+    Document Number, Memo, Customer, and Sales Order Amount.
+ *
+ * REVISION HISTORY
+ *
+ * @version 1.0 OTP-7938 : 20-September-2024 : Created the initial build by JJ0340
+ *********************************************************************************************************************************************/
+define(['N/url', 'N/currentRecord'],
     /**
      * @param{url} url
      */
-    function (url) {
+    function (url, currentRecord) {
         function redirectToSalesOrdersPage(salesRepId) {
             try {
                 let suiteletUrl = url.resolveScript({
@@ -19,7 +44,7 @@ define(['N/url'],
             catch(e){
                 log.debug('Error@redirectToSalesOrdersPage', e.stack + '\n' + e.message);
             }
-      }
+        }
 
         /**
          * Function to be executed after page is initialized.
@@ -46,9 +71,28 @@ define(['N/url'],
          *
          * @since 2015.2
          */
-        // function fieldChanged(scriptContext) {
-
-        // }
+        function fieldChanged(scriptContext) {
+            try{
+                // let fields = currentRecord.get();
+                let page = scriptContext.currentRecord.getValue({fieldId: 'custpage_pagenumber'});
+                let srepid = scriptContext.currentRecord.getValue({fieldId: 'custpage_salesrepid'});
+                // log.debug('Page Number Changed', page);
+                if(scriptContext.fieldId === 'custpage_pagenumber'){
+                    let suiteletUrl = url.resolveScript({
+                        scriptId: 'customscript_jj_sl_display_openso_srepid',
+                        deploymentId: 'customdeploy_jj_sl_display_openso_srepid',
+                        params: {
+                            pageIndex: page,
+                            salesRepId: srepid
+                        }
+                    });
+                    window.location.href = suiteletUrl;
+                }
+            }
+            catch(e){
+                log.debug('Error@fieldChanged', e.stack + '\n' + e.message);
+            }
+        }
 
         /**
          * Function to be executed when field is slaved.
@@ -168,7 +212,7 @@ define(['N/url'],
 
         return {
             pageInit: pageInit,
-            // fieldChanged: fieldChanged,
+            fieldChanged: fieldChanged,
             // postSourcing: postSourcing,
             // sublistChanged: sublistChanged,
             // lineInit: lineInit,

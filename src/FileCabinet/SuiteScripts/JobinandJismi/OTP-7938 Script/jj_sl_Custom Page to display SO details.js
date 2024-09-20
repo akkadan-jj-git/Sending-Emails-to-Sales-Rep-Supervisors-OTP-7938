@@ -2,6 +2,31 @@
  * @NApiVersion 2.1
  * @NScriptType Suitelet
  */
+/*****************************************************************************************************************************************
+ * OTP
+ *
+ * OTP-7938:Build a Page for Sending Emails to Sales Rep Supervisors
+ *
+ *******************************************************************************************************************************************
+ *
+ * Author: Jobin & Jismi IT Services
+ *
+ * Date Created : 20-September-2024
+ *
+ *  Description :Create a script for streamlining communication between sales reps and their supervisors by adding an "Email" button to the 
+    sales rep's record in NetSuite. Upon clicking this button, users will be redirected to a new page that displays all open sales orders for 
+    the selected sales rep.
+    This page should list sales orders with a "Pending Approval" status and those marked as "Open" with a creation date older than one month. 
+    Users can select multiple sales orders using checkboxes. Users should be able to select sales orders and provide reasons for each.
+
+    Upon submission, the selected sales orders and reasons should be listed under each respective sales order as a sublist. All selected sales 
+    orders should be compiled into an Excel file and sent to the sales rep's supervisor via email. This file should contain columns like 
+    Document Number, Memo, Customer, and Sales Order Amount.
+ *
+ * REVISION HISTORY
+ *
+ * @version 1.0 OTP-7938 : 20-September-2024 : Created the initial build by JJ0340
+ *********************************************************************************************************************************************/
 define(['N/email', 'N/file', 'N/format', 'N/record', 'N/search', 'N/ui/serverWidget', 'N/runtime', 'N/xml', 'N/encode'],
     /**
  * @param{email} email
@@ -76,6 +101,7 @@ define(['N/email', 'N/file', 'N/format', 'N/record', 'N/search', 'N/ui/serverWid
                 let pageIndex = pg;
                 let pagedData = salesorderSearchObj.runPaged({ pageSize: pageSize });
                 let totalLines = pagedData.count;
+                log.debug('total Lines', totalLines);
                 let totalPages = Math.ceil(totalLines / pageSize);
                 if (totalLines === 0) {
                     // If there are no search results, display a message
@@ -94,8 +120,11 @@ define(['N/email', 'N/file', 'N/format', 'N/record', 'N/search', 'N/ui/serverWid
                     // Get the search results for the current page
                     currentPage = pagedData.fetch({ index: pageIndex });
                 }
-                log.debug('Search Result', currentPage);
-                return currentPage;
+                // log.debug('Search Result', currentPage);
+                return {
+                    currentPage: currentPage,
+                    totalPages: totalPages
+                };
             }
             catch (e) {
                 log.debug('Error@getSalesOrderDetails', e.stack + '\n' + e.message);
@@ -197,44 +226,13 @@ define(['N/email', 'N/file', 'N/format', 'N/record', 'N/search', 'N/ui/serverWid
             let xlsFileId = xlsFile.save();
             return xlsFileId;
         }
-        function setSummaryBox(summaryLine) {
-            let html = '<style>'
-                'table.newtotallingtable caption {n' +
-                '  display: table-caption !important;n' +
-                '  margin-bottom: 10px;n' +
-                '  font-weight: bold;n' +
-                '  color: white;n' +
-                '  font-size: 12px !important;n' +
-                '  padding: 4px 0px 4px 8px;n' +
-                '}' +
-                'table.newtotallingtable caption {n' +
-                '  background-color: #607799;n' +
-                '}' +
-                'caption, th {n' +
-                '  text-align: left;n' +
-                '}' +
-                '</style>';
-            html += '<div style=”text-align: right; padding-right: 20px;”>';
-            html += '<span class=”bgmd totallingbg” style=”display:inline-block; padding: 10px 25px; margin-bottom:5px;”>';
-            html += '<table class=”newtotallingtable” cellspacing=”2? cellpadding=”0px” border=”0px” style=”padding: 5px;n' +
-                '  width: 217px;”><caption style=”display: none;” >Summary</caption><tbody><td style=”text-align: left;”>'; // Adjusted alignment
-            html += '<div class=”uir-field-wrapper” data-field-type=”currency”><span id=”subtotal_fs_lbl_uir_label” class=”smalltextnolink uir-label “><span id=”subtotal_fs_lbl” class=”smalltextnolink” style=”color: #262626 !important; font-size: 12px; padding-bottom:10px;”>'
-            html += 'Total Quantity</td>';
-            html += '<td style=”text-align: right; color: #262626 !important; font-size: 13px; padding-bottom:10px;” align=”right” id=”subtotal”><b>'; // Adjusted alignment
-            html += summaryLine.totalQuantity + '</b></td><td></td></tr>';
-            html += '<tr><td style=”text-align: left; color: #262626 !important; font-size: 12px;”>TOTAL AMOUNT</td><td align=”right” style=”font-size: 13px; color: #262626 !important;”><b>';
-            html += '<span style=”font-size: 13px; color: #262626; padding-left: 2px;”>' + summaryLine.totalAmount.toFixed(2) + '</span></b></td></tr>'; // Adjusted alignment
-            html += '</table></div>';
-            return html;
-        }  
         const onRequest = (scriptContext) => {
             try {
-                let pageSize = 10;
-                let pageIndex = parseInt(scriptContext.request.parameters.pageIndex) || 0;
                 if (scriptContext.request.method === 'GET') {
                     let form = serverWidget.createForm({
                         title: 'Email Open Sales Orders to Sales Supervisors'
                     });
+                    form.clientScriptModulePath = './jj_cs_Sales Rep to Suitelet page.js';
                     let salesRepId = scriptContext.request.parameters.salesRepId;
                     let salesRepIdField = form.addField({
                         id: 'custpage_salesrepid',
@@ -255,6 +253,15 @@ define(['N/email', 'N/file', 'N/format', 'N/record', 'N/search', 'N/ui/serverWid
                     employeeName.updateDisplayType({
                         displayType: serverWidget.FieldDisplayType.DISABLED
                     });
+                    let pageSelector = form.addField({
+                        id: 'custpage_pagenumber',
+                        label: 'Page',
+                        type: serverWidget.FieldType.SELECT,
+                    });
+                    let pageSize = 10;
+                    let pageIndex = scriptContext.request.parameters.pageIndex || 0;
+                    log.debug('Page Index', pageIndex);
+                    pageSelector.defaultValue = pageIndex;
                     let subList1 = form.addSublist({ id: 'custpage_sublist1', label: 'Sales Orders', type: serverWidget.SublistType.LIST });
                     subList1.addField({ id: 'custpage_docno', label: 'Document Number', type: serverWidget.FieldType.INTEGER });
                     subList1.addField({ id: 'custpage_name', label: 'Customer Name', type: serverWidget.FieldType.TEXT });
@@ -266,8 +273,15 @@ define(['N/email', 'N/file', 'N/format', 'N/record', 'N/search', 'N/ui/serverWid
                     let search = getSalesOrderDetails(salesRepId, pageIndex, pageSize, form);
                     log.debug('Ammachiyea, Paappi ingethi....!!!');
                     if(search != null){
-                        let result = search.data;
-                        log.debug('Recieved Search result in Suitelet', result);
+                        let result = search.currentPage.data;
+                        let pages = search.totalPages;
+                        for(let j = 0; j < pages; j++){
+                            pageSelector.addSelectOption({
+                                value: j,
+                                text: j+1
+                            });
+                        }
+                        // log.debug('Recieved Search result in Suitelet', result);
                         for (let i = 0; i < result.length; i++) {
                             let documentNumber = result[i].getValue('tranid');
                             let customerId = result[i].getValue('entity');
