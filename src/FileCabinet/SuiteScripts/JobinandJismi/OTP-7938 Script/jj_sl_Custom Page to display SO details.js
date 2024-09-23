@@ -327,7 +327,12 @@ define(['N/email', 'N/file', 'N/format', 'N/record', 'N/search', 'N/ui/serverWid
                             });
                         }
                     }
-                    log.debug('Details of the selected Sales Orders', selected);
+                    let now = new Date();
+                    let formattedDateTime = format.format({
+                        value: now,
+                        type: format.Type.DATETIME
+                    });
+                    log.debug('Date & Time', formattedDateTime);
                     // Creating Reason for Delay Record.
                     for(let i = 0; i < selected.length; i++){
                         salesOrderRecord = record.create({
@@ -346,6 +351,10 @@ define(['N/email', 'N/file', 'N/format', 'N/record', 'N/search', 'N/ui/serverWid
                         salesOrderRecord.setValue({
                             fieldId: 'custrecord_jj_rfd_internalid',
                             value: selected[i].internalid
+                        });
+                        salesOrderRecord.setValue({
+                            fieldId: 'custrecord_jj_rfd_datetime',
+                            value: formattedDateTime
                         });
                         let rfdid = salesOrderRecord.save({
                             enableSourcing: true,
@@ -372,10 +381,19 @@ define(['N/email', 'N/file', 'N/format', 'N/record', 'N/search', 'N/ui/serverWid
                         let salesRepRecord = record.load({ type: 'employee', id: sRepId });
                         let spvsr = salesRepRecord.getValue('supervisor');
                         if(spvsr){
-                            supervisorId = salesRepRecord.getValue('supervisor');
+                            let supervisorRecord = record.load({ type: 'employee', id: spvsr });
+                            let supervisorEmail = supervisorRecord.getValue('email');
+                            if(supervisorEmail){
+                                supervisorId = salesRepRecord.getValue('supervisor');
+                            }
+                            else{
+                                supervisorId = -5;
+                                out += 'Supervisor record lacks email, so email recipient is the NetSuite Administrator.\n'
+                            }
                         }
                         else{
                             supervisorId = -5;
+                            out += 'No supervisor for the Sales Rep, so email recipient is the Netuite Administrator.\n'
                         }
                         let author = runtime.getCurrentUser().id;
                         email.send({
@@ -386,6 +404,9 @@ define(['N/email', 'N/file', 'N/format', 'N/record', 'N/search', 'N/ui/serverWid
                             attachments: [file.load({ id: csvfileId }), file.load({ id: xlsfileId })]
                         });
                         out += 'Email sent.\n';
+                    }
+                    else{
+                        out += 'No Sales Orders selected.\n'
                     }
                     scriptContext.response.write(out);
                 }
