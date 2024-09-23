@@ -70,32 +70,31 @@ define(['N/email', 'N/file', 'N/format', 'N/record', 'N/search', 'N/ui/serverWid
                 return null;
             }
         }
-        // Search
         function getSalesOrderDetails(salesRepId, pg, ps, form) {
             try {
                 let salesorderSearchObj = search.create({
                     type: "salesorder",
                     settings: [{ "name": "consolidationtype", "value": "ACCTTYPE" }],
-                    filters:
-                        [
-                            ["type", "anyof", "SalesOrd"],
-                            "AND",
-                            ["mainline", "is", "T"],
-                            "AND",
-                            ["datecreated", "within", "thismonth"],
-                            "AND",
-                            ["salesrep", "anyof", salesRepId]
-                        ],
-                    columns:
-                        [
-                            search.createColumn({ name: "datecreated", label: "Date Created" }),
-                            search.createColumn({ name: "tranid", label: "Document Number" }),
-                            search.createColumn({ name: "entity", label: "Name" }),
-                            search.createColumn({ name: "memo", label: "Memo" }),
-                            search.createColumn({ name: "amount", label: "Amount" })
-                        ]
+                    filters:[
+                        ["type", "anyof", "SalesOrd"],
+                        "AND",
+                        ["mainline", "is", "T"],
+                        "AND",
+                        ["datecreated", "onorafter", "startofthismonth"],
+                        "AND",
+                        ["salesrep", "anyof", salesRepId],
+                        "AND", 
+                        // ["status","anyof","SalesOrd:A","SalesOrd:F","SalesOrd:D"]
+                        ["billingstatus","is","T"]
+                    ],
+                    columns:[
+                        search.createColumn({ name: "datecreated", label: "Date Created" }),
+                        search.createColumn({ name: "tranid", label: "Document Number" }),
+                        search.createColumn({ name: "entity", label: "Name" }),
+                        search.createColumn({ name: "memo", label: "Memo" }),
+                        search.createColumn({ name: "amount", label: "Amount" }), 'internalid'
+                    ]
                 });
-                // let searchResult = salesorderSearchObj.run().getRange({ start: 0, end: 1000 });
                 let pageSize = ps;
                 let currentPage;
                 let pageIndex = pg;
@@ -260,9 +259,9 @@ define(['N/email', 'N/file', 'N/format', 'N/record', 'N/search', 'N/ui/serverWid
                     });
                     let pageSize = 10;
                     let pageIndex = scriptContext.request.parameters.pageIndex || 0;
-                    log.debug('Page Index', pageIndex);
                     pageSelector.defaultValue = pageIndex;
                     let subList1 = form.addSublist({ id: 'custpage_sublist1', label: 'Sales Orders', type: serverWidget.SublistType.LIST });
+                    subList1.addField({ id: 'custpage_intid', label: 'Internal Id', type: serverWidget.FieldType.INTEGER });
                     subList1.addField({ id: 'custpage_docno', label: 'Document Number', type: serverWidget.FieldType.INTEGER });
                     subList1.addField({ id: 'custpage_name', label: 'Customer Name', type: serverWidget.FieldType.TEXT });
                     subList1.addField({ id: 'custpage_memo', label: 'Memo', type: serverWidget.FieldType.TEXT });
@@ -271,7 +270,6 @@ define(['N/email', 'N/file', 'N/format', 'N/record', 'N/search', 'N/ui/serverWid
                     }).updateDisplayType({displayType: serverWidget.FieldDisplayType.ENTRY });
                     subList1.addField({ id: 'custpage_select', label: 'Select', type: serverWidget.FieldType.CHECKBOX });
                     let search = getSalesOrderDetails(salesRepId, pageIndex, pageSize, form);
-                    log.debug('Ammachiyea, Paappi ingethi....!!!');
                     if(search != null){
                         let result = search.currentPage.data;
                         let pages = search.totalPages;
@@ -283,12 +281,14 @@ define(['N/email', 'N/file', 'N/format', 'N/record', 'N/search', 'N/ui/serverWid
                         }
                         // log.debug('Recieved Search result in Suitelet', result);
                         for (let i = 0; i < result.length; i++) {
+                            let internalId = result[i].getValue('internalid');
                             let documentNumber = result[i].getValue('tranid');
                             let customerId = result[i].getValue('entity');
                             let customerName = getCustomerName(customerId) || 'N/A';
                             let memo = result[i].getValue('memo') || 'N/A';
                             // let dacteCreated = result[i].getValue('datecreated');
                             let amount = result[i].getValue('amount');
+                            subList1.setSublistValue({ id: 'custpage_intid', line: i, value: internalId });
                             subList1.setSublistValue({ id: 'custpage_docno', line: i, value: documentNumber });
                             subList1.setSublistValue({ id: 'custpage_name', line: i, value: customerName });
                             subList1.setSublistValue({ id: 'custpage_memo', line: i, value: memo });
@@ -318,6 +318,7 @@ define(['N/email', 'N/file', 'N/format', 'N/record', 'N/search', 'N/ui/serverWid
                         let isSelected = scriptContext.request.getSublistValue({ group: 'custpage_sublist1', name: 'custpage_select', line: i });
                         if (isSelected === 'T') {
                             selected.push({
+                                internalid: scriptContext.request.getSublistValue({ group: 'custpage_sublist1', name: 'custpage_intid', line: i }),
                                 documentnumber: scriptContext.request.getSublistValue({ group: 'custpage_sublist1', name: 'custpage_docno', line: i }),
                                 customername: scriptContext.request.getSublistValue({ group: 'custpage_sublist1', name: 'custpage_name', line: i }),
                                 reason: scriptContext.request.getSublistValue({ group: 'custpage_sublist1', name: 'custpage_reason', line: i }),
@@ -327,6 +328,30 @@ define(['N/email', 'N/file', 'N/format', 'N/record', 'N/search', 'N/ui/serverWid
                         }
                     }
                     log.debug('Details of the selected Sales Orders', selected);
+                    // Creating Reason for Delay Record.
+                    for(let i = 0; i < selected.length; i++){
+                        salesOrderRecord = record.create({
+                            type: 'customrecord_jj_cr_delayed_so',
+                            isDynamic: true,
+                            // defaultValues: Object
+                        });
+                        salesOrderRecord.setValue({
+                            fieldId: 'custrecord_jj_so_transaction',
+                            value: selected[i].internalid
+                        });
+                        salesOrderRecord.setValue({
+                            fieldId: 'custrecord_jj_cr_reason',
+                            value: selected[i].reason
+                        });
+                        salesOrderRecord.setValue({
+                            fieldId: 'custrecord_jj_rfd_internalid',
+                            value: selected[i].internalid
+                        });
+                        let rfdid = salesOrderRecord.save({
+                            enableSourcing: true,
+                            ignoreMandatoryFields: false
+                        })
+                    }
                     let out = '';
                     if(selected.length > 0){
                         let sRepId = scriptContext.request.parameters.custpage_salesrepid;
@@ -365,7 +390,7 @@ define(['N/email', 'N/file', 'N/format', 'N/record', 'N/search', 'N/ui/serverWid
                     scriptContext.response.write(out);
                 }
             }
-            catch (e) {
+            catch(e){
                 log.debug('Error@onRequest', e.stack + '\n' + e.message);
             }
         }
